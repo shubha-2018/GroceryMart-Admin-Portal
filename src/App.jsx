@@ -21,7 +21,16 @@ function App() {
   };
 
   const [adminSection, setAdminSectionState] = useState(getInitialSection());
-  const [productsList, setProductsList] = useState(defaultProducts);
+  const [productsList, setProductsList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('grocery_mart_products');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return defaultProducts;
+  });
 
   const setAdminSection = (section) => {
     setAdminSectionState(section);
@@ -51,9 +60,12 @@ function App() {
             img: p.image_url || p.img
           }));
           setProductsList(mapped);
+          try {
+            localStorage.setItem('grocery_mart_products', JSON.stringify(mapped));
+          } catch (e) {}
         }
       } catch (err) {
-        console.warn('Backend unavailable, using default catalog fallback');
+        // Backend offline, fallback to persistent localStorage
       }
     };
     fetchProducts();

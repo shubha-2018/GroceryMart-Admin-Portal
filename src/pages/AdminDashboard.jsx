@@ -172,9 +172,69 @@ const AdminDashboard = ({
     if (setAdminSection) setAdminSection(sec);
   };
 
-  const [products, setProducts] = useState(productsList || defaultProducts);
-  const [offers, setOffers] = useState(initialOffersList);
-  const [orders, setOrders] = useState(initialOrdersList);
+  const [products, setProducts] = useState(() => {
+    try {
+      const saved = localStorage.getItem('grocery_mart_products');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return productsList || defaultProducts;
+  });
+
+  const [offers, setOffers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('grocery_mart_offers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialOffersList;
+  });
+
+  const [orders, setOrders] = useState(() => {
+    try {
+      const saved = localStorage.getItem('grocery_mart_orders');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialOrdersList;
+  });
+
+  // Sync state if localStorage changes in other tabs
+  useEffect(() => {
+    const handleStorageSync = () => {
+      try {
+        const savedProducts = localStorage.getItem('grocery_mart_products');
+        if (savedProducts) {
+          const parsed = JSON.parse(savedProducts);
+          if (Array.isArray(parsed) && parsed.length > 0) setProducts(parsed);
+        }
+        const savedOffers = localStorage.getItem('grocery_mart_offers');
+        if (savedOffers) {
+          const parsed = JSON.parse(savedOffers);
+          if (Array.isArray(parsed) && parsed.length > 0) setOffers(parsed);
+        }
+        const savedOrders = localStorage.getItem('grocery_mart_orders');
+        if (savedOrders) {
+          const parsed = JSON.parse(savedOrders);
+          if (Array.isArray(parsed) && parsed.length > 0) setOrders(parsed);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('storage', handleStorageSync);
+    window.addEventListener('grocery_mart_data_updated', handleStorageSync);
+    return () => {
+      window.removeEventListener('storage', handleStorageSync);
+      window.removeEventListener('grocery_mart_data_updated', handleStorageSync);
+    };
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
@@ -226,12 +286,18 @@ const AdminDashboard = ({
             }));
             setProducts(mapped);
             if (setProductsList) setProductsList(mapped);
+            try {
+              localStorage.setItem('grocery_mart_products', JSON.stringify(mapped));
+            } catch (e) {}
           }
 
           // Fetch offers from MySQL
           const oRes = await api.offers.getAll();
           if (oRes && oRes.data && oRes.data.length > 0) {
             setOffers(oRes.data);
+            try {
+              localStorage.setItem('grocery_mart_offers', JSON.stringify(oRes.data));
+            } catch (e) {}
           }
         }
       } catch (e) {
@@ -339,6 +405,11 @@ const AdminDashboard = ({
 
         setProducts(updatedList);
         if (setProductsList) setProductsList(updatedList);
+        try {
+          localStorage.setItem('grocery_mart_products', JSON.stringify(updatedList));
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('grocery_mart_data_updated'));
+        } catch (e) {}
         alert(`✅ Product "${formData.name}" image and details updated successfully!`);
       } else {
         // --- 2. ADD NEW PRODUCT ---
@@ -368,6 +439,11 @@ const AdminDashboard = ({
         const updatedList = [savedData, ...products];
         setProducts(updatedList);
         if (setProductsList) setProductsList(updatedList);
+        try {
+          localStorage.setItem('grocery_mart_products', JSON.stringify(updatedList));
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('grocery_mart_data_updated'));
+        } catch (e) {}
         alert(`✅ Product "${formData.name}" added successfully!`);
       }
     } catch (err) {
@@ -396,6 +472,11 @@ const AdminDashboard = ({
       const filtered = products.filter(p => p.name !== productName && p.id !== productId);
       setProducts(filtered);
       if (setProductsList) setProductsList(filtered);
+      try {
+        localStorage.setItem('grocery_mart_products', JSON.stringify(filtered));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('grocery_mart_data_updated'));
+      } catch (e) {}
       alert(`🗑️ Product "${productName}" deleted.`);
     }
   };
@@ -443,18 +524,36 @@ const AdminDashboard = ({
       if (editingOffer && editingOffer.id) {
         const res = await api.offers.update(editingOffer.id, offerFormData);
         const savedData = res?.data || { ...editingOffer, ...offerFormData };
-        setOffers(prev => prev.map(o => o.id === editingOffer.id ? savedData : o));
+        const updated = offers.map(o => o.id === editingOffer.id ? savedData : o);
+        setOffers(updated);
+        try {
+          localStorage.setItem('grocery_mart_offers', JSON.stringify(updated));
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('grocery_mart_data_updated'));
+        } catch (e) {}
         alert(`✅ Offer "${offerFormData.title}" updated successfully!`);
       } else {
         const res = await api.offers.create(offerFormData);
         const savedData = res?.data || { ...offerFormData, id: Date.now() };
-        setOffers(prev => [savedData, ...prev]);
+        const updated = [savedData, ...offers];
+        setOffers(updated);
+        try {
+          localStorage.setItem('grocery_mart_offers', JSON.stringify(updated));
+          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event('grocery_mart_data_updated'));
+        } catch (e) {}
         alert(`✅ Offer "${offerFormData.title}" created successfully!`);
       }
     } catch (err) {
-      console.warn('Error saving offer on backend:', err);
+      console.warn('Backend offer save note:', err);
       const fallbackItem = { ...offerFormData, id: editingOffer?.id || Date.now() };
-      setOffers(prev => editingOffer ? prev.map(o => o.id === editingOffer.id ? fallbackItem : o) : [fallbackItem, ...prev]);
+      const updated = editingOffer ? offers.map(o => o.id === editingOffer.id ? fallbackItem : o) : [fallbackItem, ...offers];
+      setOffers(updated);
+      try {
+        localStorage.setItem('grocery_mart_offers', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('grocery_mart_data_updated'));
+      } catch (e) {}
       alert(`✅ Offer "${offerFormData.title}" saved!`);
     } finally {
       setLoading(false);
@@ -473,7 +572,13 @@ const AdminDashboard = ({
       } catch (err) {
         console.warn('Error deleting offer:', err);
       }
-      setOffers(prev => prev.filter(o => o.id !== offer.id));
+      const updated = offers.filter(o => o.id !== offer.id);
+      setOffers(updated);
+      try {
+        localStorage.setItem('grocery_mart_offers', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('grocery_mart_data_updated'));
+      } catch (e) {}
       alert(`🗑️ Offer "${offerTitle}" deleted.`);
     }
   };
@@ -485,7 +590,15 @@ const AdminDashboard = ({
     if (newStatus === 'Cancelled') newColor = '#d32f2f';
     if (newStatus === 'Processing') newColor = '#1976d2';
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, order_status: newStatus, status_color: newColor } : o));
+    setOrders(prev => {
+      const updated = prev.map(o => o.id === orderId ? { ...o, order_status: newStatus, status_color: newColor } : o);
+      try {
+        localStorage.setItem('grocery_mart_orders', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('grocery_mart_data_updated'));
+      } catch (e) {}
+      return updated;
+    });
   };
 
   // Filtered Products
